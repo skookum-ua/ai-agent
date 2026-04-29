@@ -3,7 +3,9 @@ import argparse
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
-
+from prompts import system_prompt
+from functions.get_files_info import schema_get_files_info, get_files_info
+from call_functions import available_functions
 
 def main():
     parser = argparse.ArgumentParser(description="Chatbot")
@@ -24,17 +26,20 @@ def main():
     
     client = genai.Client(api_key=api_key)
 
-    if args.modles == True:
+    if args.models == True:
         for model in client.models.list():
             print(f"Model Name: {model.name}")
             print(f"Actions: {model.supported_actions}") 
-            #print(f"Input Token Limit: {model.input_token_limit}")
+            print(f"Input Token Limit: {model.input_token_limit}")
             print("-" * 30)
 
     try:
-        response = client.models.generate_content(model = "gemini-2.5-flash", contents = messages)
+        response = call_ai(client, "gemini-2.5-flash", messages )
+        #response = client.models.generate_content(model = "gemini-2.5-flash", contents = messages)
     except Exception:
-        response = client.models.generate_content(model = "gemini-flash-lite-latest", contents = messages)
+        #response = call_ai(client, "gemini-3-flash-preview", messages )
+        response = call_ai(client, "gemini-flash-lite-latest", messages )
+        #response = client.models.generate_content(model = "gemini-flash-lite-latest", contents = messages)
     if response.usage_metadata == None:
         raise RuntimeError("no metadata, bad api request")
     
@@ -42,7 +47,15 @@ def main():
         print(f"User prompt: {args.user_prompt}")
         print(f"Prompt tokens: {response.usage_metadata.prompt_token_count}")
         print(f"Response tokens: {response.usage_metadata.candidates_token_count}")
-    print(f"Response: \n{response.text}")
+
+    if response.function_calls:
+        for i in response.function_calls:
+            print(f"Calling function: {i.name}({i.args})")
+    else:
+        print(f"Response: \n{response.text}")
+
+def call_ai(cli, mod, mess):
+    return  cli.models.generate_content(model = mod, contents = mess, config=types.GenerateContentConfig(tools = [available_functions], system_instruction=system_prompt))
 
 if __name__ == "__main__":
     main()
