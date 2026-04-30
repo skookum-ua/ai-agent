@@ -1,11 +1,12 @@
 import os
+import sys
 import argparse
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 from prompts import system_prompt
 from functions.get_files_info import schema_get_files_info, get_files_info
-from call_functions import available_functions
+from call_functions import available_functions, call_function
 
 def main():
     parser = argparse.ArgumentParser(description="Chatbot")
@@ -33,26 +34,56 @@ def main():
             print(f"Input Token Limit: {model.input_token_limit}")
             print("-" * 30)
 
-    try:
-        response = call_ai(client, "gemini-2.5-flash", messages )
-        #response = client.models.generate_content(model = "gemini-2.5-flash", contents = messages)
-    except Exception:
-        #response = call_ai(client, "gemini-3-flash-preview", messages )
-        response = call_ai(client, "gemini-flash-lite-latest", messages )
-        #response = client.models.generate_content(model = "gemini-flash-lite-latest", contents = messages)
-    if response.usage_metadata == None:
-        raise RuntimeError("no metadata, bad api request")
-    
-    if args.verbose == True:
-        print(f"User prompt: {args.user_prompt}")
-        print(f"Prompt tokens: {response.usage_metadata.prompt_token_count}")
-        print(f"Response tokens: {response.usage_metadata.candidates_token_count}")
+    for i in range(20):
+        try:
+            response = call_ai(client, "gemini-2.5-flash", messages )
+            #response = client.models.generate_content(model = "gemini-2.5-flash", contents = messages)
+        except Exception:
+            #response = call_ai(client, "gemini-3-flash-preview", messages )
+            response = call_ai(client, "gemini-flash-lite-latest", messages )
+            #response = client.models.generate_content(model = "gemini-flash-lite-latest", contents = messages)
+        if response.usage_metadata == None:
+            raise RuntimeError("no metadata, bad api request")
+        
+        if response.candidates:
+            for i in response.candidates:
+                if i.content is not None:
+                    messages.append(i.content)
 
-    if response.function_calls:
-        for i in response.function_calls:
-            print(f"Calling function: {i.name}({i.args})")
-    else:
-        print(f"Response: \n{response.text}")
+        if args.verbose == True:
+            print(f"User prompt: {args.user_prompt}")
+            print(f"Prompt tokens: {response.usage_metadata.prompt_token_count}")
+            print(f"Response tokens: {response.usage_metadata.candidates_token_count}")
+        
+        list_of_function_results = []
+        
+        if response.function_calls:
+            
+            for i in response.function_calls:
+                #print(f"Calling function: {i.name}({i.args})")
+                function_call_result = call_function(i)
+                if not function_call_result.parts:
+                    raise Exception(".parts list of function call result is empty")
+                if not function_call_result.parts[0].function_response:
+                    raise Exception(".function_response is None")
+                if not function_call_result.parts[0].function_response.response:
+                    raise Exception("actual function result is None")
+                
+                list_of_function_results.append(function_call_result.parts[0])
+
+                if args.verbose == True:
+                    print(f"-> {function_call_result.parts[0].function_response.response}")
+        
+        else:
+            messages.append(types.Content(role="user", parts=list_of_function_results))
+        
+            print(f"Response: \n{response.text}")
+
+            break
+        messages.append(types.Content(role="user", parts=list_of_function_results))
+    
+    print("maxmum number of iterations reached")
+    sys.exit(1)
 
 def call_ai(cli, mod, mess):
     return  cli.models.generate_content(model = mod, contents = mess, config=types.GenerateContentConfig(tools = [available_functions], system_instruction=system_prompt))
