@@ -40,7 +40,8 @@ def main():
             #response = client.models.generate_content(model = "gemini-2.5-flash", contents = messages)
         except Exception:
             #response = call_ai(client, "gemini-3-flash-preview", messages )
-            response = call_ai(client, "gemini-flash-lite-latest", messages )
+            response = call_ai(client, "gemini-2.5-flash-lite", messages )
+            #response = call_ai(client, "gemini-flash-lite-latest", messages )
             #response = client.models.generate_content(model = "gemini-flash-lite-latest", contents = messages)
         if response.usage_metadata == None:
             raise RuntimeError("no metadata, bad api request")
